@@ -779,7 +779,7 @@ _PyPegen_function_def_decorators(Parser *p, asdl_expr_seq *decorators, stmt_ty f
         function_def->v.FunctionDef.name, function_def->v.FunctionDef.args,
         function_def->v.FunctionDef.body, decorators,
         function_def->v.FunctionDef.returns,
-        function_def->v.FunctionDef.type_comment, function_def->lineno,
+        function_def->v.FunctionDef.type_comment,NULL, function_def->lineno,
         function_def->col_offset, function_def->end_lineno,
         function_def->end_col_offset, p->arena);
 }

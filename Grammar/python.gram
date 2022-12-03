@@ -267,10 +267,10 @@ function_def[stmt_ty]:
 
 function_def_raw[stmt_ty]:
     | invalid_def_raw
-    | 'def' n=NAME &&'(' params=[params] ')' a=['->' z=expression { z }] &&':' tc=[func_type_comment] b=block {
+    | 'def' n=NAME &&'(' params=[params] ')' a=['->' z=expression { z }] ag=[scope_modis] &&':' tc=[func_type_comment] b=block {
         _PyAST_FunctionDef(n->v.Name.id,
                         (params) ? params : CHECK(arguments_ty, _PyPegen_empty_arguments(p)),
-                        b, NULL, a, NEW_TYPE_COMMENT(p, tc), EXTRA) }
+                        b, NULL, a, NEW_TYPE_COMMENT(p, tc), ag, EXTRA) }
     | ASYNC 'def' n=NAME &&'(' params=[params] ')' a=['->' z=expression { z }] &&':' tc=[func_type_comment] b=block {
         CHECK_VERSION(
             stmt_ty,
@@ -283,6 +283,12 @@ function_def_raw[stmt_ty]:
 
 # Function parameters
 # -------------------
+
+scope_modis[stmt_ty]:
+    | '[' ('+') a[asdl_expr_seq*]=','.NAME+ ']' {
+    _PyAST_ScopeModifier(1,CHECK(asdl_identifier_seq*, _PyPegen_map_names_to_ids(p, a)), EXTRA) }
+    | '[' ('-') a[asdl_expr_seq*]=','.NAME+ ']' {
+    _PyAST_ScopeModifier(0,CHECK(asdl_identifier_seq*, _PyPegen_map_names_to_ids(p, a)), EXTRA) }
 
 params[arguments_ty]:
     | invalid_parameters

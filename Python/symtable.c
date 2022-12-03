@@ -94,6 +94,9 @@ ste_new(struct symtable *st, identifier name, _Py_block_ty block,
     ste->ste_end_lineno = end_lineno;
     ste->ste_end_col_offset = end_col_offset;
 
+    ste->allow_deny_names = NULL;
+    ste->scope_modify_mode = 0;
+
     if (st->st_cur != NULL &&
         (st->st_cur->ste_nested ||
          st->st_cur->ste_type == FunctionBlock))
@@ -110,6 +113,7 @@ ste_new(struct symtable *st, identifier name, _Py_block_ty block,
     ste->ste_symbols = PyDict_New();
     ste->ste_varnames = PyList_New(0);
     ste->ste_children = PyList_New(0);
+    ste->allow_deny_names = PyList_New(0);
     if (ste->ste_symbols == NULL
         || ste->ste_varnames == NULL
         || ste->ste_children == NULL)
@@ -832,12 +836,28 @@ analyze_block(PySTEntryObject *ste, PyObject *bound, PyObject *free,
     allfree = PySet_New(NULL);
     if (!allfree)
         goto error;
+    PyObject* filtered_newbound = PySet_New(NULL);
+    if(!filtered_newbound)
+        goto error;
     for (i = 0; i < PyList_GET_SIZE(ste->ste_children); ++i) {
         PyObject *c = PyList_GET_ITEM(ste->ste_children, i);
         PySTEntryObject* entry;
         assert(c && PySTEntry_Check(c));
         entry = (PySTEntryObject*)c;
-        if (!analyze_child_block(entry, newbound, newfree, newglobal,
+        PySet_Clear(filtered_newbound);
+        if(entry->scope_modify_mode==1){
+            for(int j = 0;j<PyList_GET_SIZE(entry->allow_deny_names);++j){
+                PySet_Add(filtered_newbound,PyList_GET_ITEM(entry->allow_deny_names,j));
+            }
+        }else{
+            temp = PyNumber_InPlaceOr(filtered_newbound, newbound);
+            if(!temp)
+                goto error;
+            for(int j = 0;j<PyList_GET_SIZE(entry->allow_deny_names);++j){
+                PySet_Discard(filtered_newbound,PyList_GET_ITEM(entry->allow_deny_names,j));
+            }
+        }
+        if (!analyze_child_block(entry, filtered_newbound, newfree, newglobal,
                                  allfree))
             goto error;
         /* Check if any children have free variables */
@@ -1205,6 +1225,15 @@ symtable_visit_stmt(struct symtable *st, stmt_ty s)
                                   FunctionBlock, (void *)s,
                                   LOCATION(s)))
             VISIT_QUIT(st, 0);
+        PySTEntryObject* ste = st->st_cur;
+        if(s->v.FunctionDef.scope_modifier!=NULL){
+            ste->scope_modify_mode = s->v.FunctionDef.scope_modifier->v.ScopeModifier.mode;
+            asdl_identifier_seq *seq = s->v.FunctionDef.scope_modifier->v.ScopeModifier.names;
+            for (int j = 0; j < asdl_seq_LEN(seq); j++) {
+                identifier name = (identifier)asdl_seq_GET(seq, j);
+                PyList_Append(ste->allow_deny_names,name);
+            }
+        }
         VISIT(st, arguments, s->v.FunctionDef.args);
         VISIT_SEQ(st, stmt, s->v.FunctionDef.body);
         if (!symtable_exit_block(st))

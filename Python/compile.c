@@ -2620,6 +2620,7 @@ compiler_function(struct compiler *c, stmt_ty s, int is_async)
     identifier name;
     asdl_expr_seq* decos;
     asdl_stmt_seq *body;
+    stmt_ty scope_modifier;
     Py_ssize_t i, funcflags;
     int annotations;
     int scope_type;
@@ -2633,6 +2634,7 @@ compiler_function(struct compiler *c, stmt_ty s, int is_async)
         decos = s->v.AsyncFunctionDef.decorator_list;
         name = s->v.AsyncFunctionDef.name;
         body = s->v.AsyncFunctionDef.body;
+        scope_modifier = NULL;
 
         scope_type = COMPILER_SCOPE_ASYNC_FUNCTION;
     } else {
@@ -2643,6 +2645,7 @@ compiler_function(struct compiler *c, stmt_ty s, int is_async)
         decos = s->v.FunctionDef.decorator_list;
         name = s->v.FunctionDef.name;
         body = s->v.FunctionDef.body;
+        scope_modifier = s->v.FunctionDef.scope_modifier;
 
         scope_type = COMPILER_SCOPE_FUNCTION;
     }
@@ -2683,6 +2686,18 @@ compiler_function(struct compiler *c, stmt_ty s, int is_async)
         compiler_exit_scope(c);
         return 0;
     }
+
+    // if(scope_modifier!=NULL){
+    //     int scope_modifier_count = asdl_seq_LEN(scope_modifier);
+    //     printf("Start %c %d\n",PyUnicode_READ_CHAR(name, 0),scope_modifier_count);
+    //     for(int j = 0;j<scope_modifier_count;j++){
+    //         expr_ty e = (expr_ty)asdl_seq_GET(scope_modifier,j);
+    //         // printf("Type:%d\n",e->kind);
+    //         //identifier ident = e->v.Name.id;
+    //         //printf("%c\n",PyUnicode_READ_CHAR(ident, 0));
+    //     }
+    //     printf("End\n");
+    // }
 
     c->u->u_argcount = asdl_seq_LEN(args->args);
     c->u->u_posonlyargcount = asdl_seq_LEN(args->posonlyargs);

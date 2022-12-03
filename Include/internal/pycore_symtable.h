@@ -73,6 +73,8 @@ typedef struct _symtable_entry {
     int ste_opt_lineno;      /* lineno of last exec or import * */
     int ste_opt_col_offset;  /* offset of last exec or import * */
     struct symtable *ste_table;
+    PyObject* allow_deny_names;
+    int scope_modify_mode;
 } PySTEntryObject;
 
 extern PyTypeObject PySTEntry_Type;

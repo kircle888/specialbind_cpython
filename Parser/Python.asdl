@@ -10,7 +10,7 @@ module Python
 
     stmt = FunctionDef(identifier name, arguments args,
                        stmt* body, expr* decorator_list, expr? returns,
-                       string? type_comment)
+                       string? type_comment, stmt? scope_modifier)
           | AsyncFunctionDef(identifier name, arguments args,
                              stmt* body, expr* decorator_list, expr? returns,
                              string? type_comment)
@@ -49,6 +49,7 @@ module Python
           | Global(identifier* names)
           | Nonlocal(identifier* names)
           | Expr(expr value)
+          | ScopeModifier(int mode,identifier* names)
           | Pass | Break | Continue
 
           -- col_offset is the byte offset in the utf8 string the parser uses

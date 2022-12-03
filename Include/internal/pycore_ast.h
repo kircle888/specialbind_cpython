@@ -181,7 +181,8 @@ enum _stmt_kind {FunctionDef_kind=1, AsyncFunctionDef_kind=2, ClassDef_kind=3,
                   AsyncWith_kind=14, Match_kind=15, Raise_kind=16, Try_kind=17,
                   TryStar_kind=18, Assert_kind=19, Import_kind=20,
                   ImportFrom_kind=21, Global_kind=22, Nonlocal_kind=23,
-                  Expr_kind=24, Pass_kind=25, Break_kind=26, Continue_kind=27};
+                  Expr_kind=24, ScopeModifier_kind=25, Pass_kind=26,
+                  Break_kind=27, Continue_kind=28};
 struct _stmt {
     enum _stmt_kind kind;
     union {
@@ -192,6 +193,7 @@ struct _stmt {
             asdl_expr_seq *decorator_list;
             expr_ty returns;
             string type_comment;
+            stmt_ty scope_modifier;
         } FunctionDef;
 
         struct {
@@ -328,6 +330,11 @@ struct _stmt {
         struct {
             expr_ty value;
         } Expr;
+
+        struct {
+            int mode;
+            asdl_identifier_seq *names;
+        } ScopeModifier;
 
     } v;
     int lineno;
@@ -640,9 +647,9 @@ mod_ty _PyAST_FunctionType(asdl_expr_seq * argtypes, expr_ty returns, PyArena
                            *arena);
 stmt_ty _PyAST_FunctionDef(identifier name, arguments_ty args, asdl_stmt_seq *
                            body, asdl_expr_seq * decorator_list, expr_ty
-                           returns, string type_comment, int lineno, int
-                           col_offset, int end_lineno, int end_col_offset,
-                           PyArena *arena);
+                           returns, string type_comment, stmt_ty
+                           scope_modifier, int lineno, int col_offset, int
+                           end_lineno, int end_col_offset, PyArena *arena);
 stmt_ty _PyAST_AsyncFunctionDef(identifier name, arguments_ty args,
                                 asdl_stmt_seq * body, asdl_expr_seq *
                                 decorator_list, expr_ty returns, string
@@ -713,6 +720,9 @@ stmt_ty _PyAST_Nonlocal(asdl_identifier_seq * names, int lineno, int
                         *arena);
 stmt_ty _PyAST_Expr(expr_ty value, int lineno, int col_offset, int end_lineno,
                     int end_col_offset, PyArena *arena);
+stmt_ty _PyAST_ScopeModifier(int mode, asdl_identifier_seq * names, int lineno,
+                             int col_offset, int end_lineno, int
+                             end_col_offset, PyArena *arena);
 stmt_ty _PyAST_Pass(int lineno, int col_offset, int end_lineno, int
                     end_col_offset, PyArena *arena);
 stmt_ty _PyAST_Break(int lineno, int col_offset, int end_lineno, int

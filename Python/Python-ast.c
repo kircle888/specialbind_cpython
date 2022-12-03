@@ -138,6 +138,7 @@ void _PyAST_Fini(PyInterpreterState *interp)
     Py_CLEAR(state->RShift_type);
     Py_CLEAR(state->Raise_type);
     Py_CLEAR(state->Return_type);
+    Py_CLEAR(state->ScopeModifier_type);
     Py_CLEAR(state->SetComp_type);
     Py_CLEAR(state->Set_type);
     Py_CLEAR(state->Slice_type);
@@ -226,6 +227,7 @@ void _PyAST_Fini(PyInterpreterState *interp)
     Py_CLEAR(state->lower);
     Py_CLEAR(state->match_case_type);
     Py_CLEAR(state->mod_type);
+    Py_CLEAR(state->mode);
     Py_CLEAR(state->module);
     Py_CLEAR(state->msg);
     Py_CLEAR(state->name);
@@ -243,6 +245,7 @@ void _PyAST_Fini(PyInterpreterState *interp)
     Py_CLEAR(state->rest);
     Py_CLEAR(state->returns);
     Py_CLEAR(state->right);
+    Py_CLEAR(state->scope_modifier);
     Py_CLEAR(state->simple);
     Py_CLEAR(state->slice);
     Py_CLEAR(state->step);
@@ -330,6 +333,7 @@ static int init_identifiers(struct ast_state *state)
     if ((state->level = PyUnicode_InternFromString("level")) == NULL) return 0;
     if ((state->lineno = PyUnicode_InternFromString("lineno")) == NULL) return 0;
     if ((state->lower = PyUnicode_InternFromString("lower")) == NULL) return 0;
+    if ((state->mode = PyUnicode_InternFromString("mode")) == NULL) return 0;
     if ((state->module = PyUnicode_InternFromString("module")) == NULL) return 0;
     if ((state->msg = PyUnicode_InternFromString("msg")) == NULL) return 0;
     if ((state->name = PyUnicode_InternFromString("name")) == NULL) return 0;
@@ -345,6 +349,7 @@ static int init_identifiers(struct ast_state *state)
     if ((state->rest = PyUnicode_InternFromString("rest")) == NULL) return 0;
     if ((state->returns = PyUnicode_InternFromString("returns")) == NULL) return 0;
     if ((state->right = PyUnicode_InternFromString("right")) == NULL) return 0;
+    if ((state->scope_modifier = PyUnicode_InternFromString("scope_modifier")) == NULL) return 0;
     if ((state->simple = PyUnicode_InternFromString("simple")) == NULL) return 0;
     if ((state->slice = PyUnicode_InternFromString("slice")) == NULL) return 0;
     if ((state->step = PyUnicode_InternFromString("step")) == NULL) return 0;
@@ -406,6 +411,7 @@ static const char * const FunctionDef_fields[]={
     "decorator_list",
     "returns",
     "type_comment",
+    "scope_modifier",
 };
 static const char * const AsyncFunctionDef_fields[]={
     "name",
@@ -518,6 +524,10 @@ static const char * const Nonlocal_fields[]={
 };
 static const char * const Expr_fields[]={
     "value",
+};
+static const char * const ScopeModifier_fields[]={
+    "mode",
+    "names",
 };
 static const char * const expr_attributes[] = {
     "lineno",
@@ -1136,7 +1146,7 @@ init_types(struct ast_state *state)
         "FunctionType(expr* argtypes, expr returns)");
     if (!state->FunctionType_type) return 0;
     state->stmt_type = make_type(state, "stmt", state->AST_type, NULL, 0,
-        "stmt = FunctionDef(identifier name, arguments args, stmt* body, expr* decorator_list, expr? returns, string? type_comment)\n"
+        "stmt = FunctionDef(identifier name, arguments args, stmt* body, expr* decorator_list, expr? returns, string? type_comment, stmt? scope_modifier)\n"
         "     | AsyncFunctionDef(identifier name, arguments args, stmt* body, expr* decorator_list, expr? returns, string? type_comment)\n"
         "     | ClassDef(identifier name, expr* bases, keyword* keywords, stmt* body, expr* decorator_list)\n"
         "     | Return(expr? value)\n"
@@ -1160,6 +1170,7 @@ init_types(struct ast_state *state)
         "     | Global(identifier* names)\n"
         "     | Nonlocal(identifier* names)\n"
         "     | Expr(expr value)\n"
+        "     | ScopeModifier(int mode, identifier* names)\n"
         "     | Pass\n"
         "     | Break\n"
         "     | Continue");
@@ -1171,14 +1182,17 @@ init_types(struct ast_state *state)
         -1)
         return 0;
     state->FunctionDef_type = make_type(state, "FunctionDef", state->stmt_type,
-                                        FunctionDef_fields, 6,
-        "FunctionDef(identifier name, arguments args, stmt* body, expr* decorator_list, expr? returns, string? type_comment)");
+                                        FunctionDef_fields, 7,
+        "FunctionDef(identifier name, arguments args, stmt* body, expr* decorator_list, expr? returns, string? type_comment, stmt? scope_modifier)");
     if (!state->FunctionDef_type) return 0;
     if (PyObject_SetAttr(state->FunctionDef_type, state->returns, Py_None) ==
         -1)
         return 0;
     if (PyObject_SetAttr(state->FunctionDef_type, state->type_comment, Py_None)
         == -1)
+        return 0;
+    if (PyObject_SetAttr(state->FunctionDef_type, state->scope_modifier,
+        Py_None) == -1)
         return 0;
     state->AsyncFunctionDef_type = make_type(state, "AsyncFunctionDef",
                                              state->stmt_type,
@@ -1303,6 +1317,11 @@ init_types(struct ast_state *state)
                                  1,
         "Expr(expr value)");
     if (!state->Expr_type) return 0;
+    state->ScopeModifier_type = make_type(state, "ScopeModifier",
+                                          state->stmt_type,
+                                          ScopeModifier_fields, 2,
+        "ScopeModifier(int mode, identifier* names)");
+    if (!state->ScopeModifier_type) return 0;
     state->Pass_type = make_type(state, "Pass", state->stmt_type, NULL, 0,
         "Pass");
     if (!state->Pass_type) return 0;
@@ -1964,8 +1983,9 @@ _PyAST_FunctionType(asdl_expr_seq * argtypes, expr_ty returns, PyArena *arena)
 stmt_ty
 _PyAST_FunctionDef(identifier name, arguments_ty args, asdl_stmt_seq * body,
                    asdl_expr_seq * decorator_list, expr_ty returns, string
-                   type_comment, int lineno, int col_offset, int end_lineno,
-                   int end_col_offset, PyArena *arena)
+                   type_comment, stmt_ty scope_modifier, int lineno, int
+                   col_offset, int end_lineno, int end_col_offset, PyArena
+                   *arena)
 {
     stmt_ty p;
     if (!name) {
@@ -1988,6 +2008,7 @@ _PyAST_FunctionDef(identifier name, arguments_ty args, asdl_stmt_seq * body,
     p->v.FunctionDef.decorator_list = decorator_list;
     p->v.FunctionDef.returns = returns;
     p->v.FunctionDef.type_comment = type_comment;
+    p->v.FunctionDef.scope_modifier = scope_modifier;
     p->lineno = lineno;
     p->col_offset = col_offset;
     p->end_lineno = end_lineno;
@@ -2528,6 +2549,25 @@ _PyAST_Expr(expr_ty value, int lineno, int col_offset, int end_lineno, int
         return NULL;
     p->kind = Expr_kind;
     p->v.Expr.value = value;
+    p->lineno = lineno;
+    p->col_offset = col_offset;
+    p->end_lineno = end_lineno;
+    p->end_col_offset = end_col_offset;
+    return p;
+}
+
+stmt_ty
+_PyAST_ScopeModifier(int mode, asdl_identifier_seq * names, int lineno, int
+                     col_offset, int end_lineno, int end_col_offset, PyArena
+                     *arena)
+{
+    stmt_ty p;
+    p = (stmt_ty)_PyArena_Malloc(arena, sizeof(*p));
+    if (!p)
+        return NULL;
+    p->kind = ScopeModifier_kind;
+    p->v.ScopeModifier.mode = mode;
+    p->v.ScopeModifier.names = names;
     p->lineno = lineno;
     p->col_offset = col_offset;
     p->end_lineno = end_lineno;
@@ -3737,6 +3777,11 @@ ast2obj_stmt(struct ast_state *state, void* _o)
         if (PyObject_SetAttr(result, state->type_comment, value) == -1)
             goto failed;
         Py_DECREF(value);
+        value = ast2obj_stmt(state, o->v.FunctionDef.scope_modifier);
+        if (!value) goto failed;
+        if (PyObject_SetAttr(result, state->scope_modifier, value) == -1)
+            goto failed;
+        Py_DECREF(value);
         break;
     case AsyncFunctionDef_kind:
         tp = (PyTypeObject *)state->AsyncFunctionDef_type;
@@ -4204,6 +4249,22 @@ ast2obj_stmt(struct ast_state *state, void* _o)
         value = ast2obj_expr(state, o->v.Expr.value);
         if (!value) goto failed;
         if (PyObject_SetAttr(result, state->value, value) == -1)
+            goto failed;
+        Py_DECREF(value);
+        break;
+    case ScopeModifier_kind:
+        tp = (PyTypeObject *)state->ScopeModifier_type;
+        result = PyType_GenericNew(tp, NULL, NULL);
+        if (!result) goto failed;
+        value = ast2obj_int(state, o->v.ScopeModifier.mode);
+        if (!value) goto failed;
+        if (PyObject_SetAttr(result, state->mode, value) == -1)
+            goto failed;
+        Py_DECREF(value);
+        value = ast2obj_list(state, (asdl_seq*)o->v.ScopeModifier.names,
+                             ast2obj_identifier);
+        if (!value) goto failed;
+        if (PyObject_SetAttr(result, state->names, value) == -1)
             goto failed;
         Py_DECREF(value);
         break;
@@ -5788,6 +5849,7 @@ obj2ast_stmt(struct ast_state *state, PyObject* obj, stmt_ty* out, PyArena*
         asdl_expr_seq* decorator_list;
         expr_ty returns;
         string type_comment;
+        stmt_ty scope_modifier;
 
         if (_PyObject_LookupAttr(obj, state->name, &tmp) < 0) {
             return 1;
@@ -5929,9 +5991,27 @@ obj2ast_stmt(struct ast_state *state, PyObject* obj, stmt_ty* out, PyArena*
             if (res != 0) goto failed;
             Py_CLEAR(tmp);
         }
+        if (_PyObject_LookupAttr(obj, state->scope_modifier, &tmp) < 0) {
+            return 1;
+        }
+        if (tmp == NULL || tmp == Py_None) {
+            Py_CLEAR(tmp);
+            scope_modifier = NULL;
+        }
+        else {
+            int res;
+            if (_Py_EnterRecursiveCall(" while traversing 'FunctionDef' node")) {
+                goto failed;
+            }
+            res = obj2ast_stmt(state, tmp, &scope_modifier, arena);
+            _Py_LeaveRecursiveCall();
+            if (res != 0) goto failed;
+            Py_CLEAR(tmp);
+        }
         *out = _PyAST_FunctionDef(name, args, body, decorator_list, returns,
-                                  type_comment, lineno, col_offset, end_lineno,
-                                  end_col_offset, arena);
+                                  type_comment, scope_modifier, lineno,
+                                  col_offset, end_lineno, end_col_offset,
+                                  arena);
         if (*out == NULL) goto failed;
         return 0;
     }
@@ -8027,6 +8107,73 @@ obj2ast_stmt(struct ast_state *state, PyObject* obj, stmt_ty* out, PyArena*
         }
         *out = _PyAST_Expr(value, lineno, col_offset, end_lineno,
                            end_col_offset, arena);
+        if (*out == NULL) goto failed;
+        return 0;
+    }
+    tp = state->ScopeModifier_type;
+    isinstance = PyObject_IsInstance(obj, tp);
+    if (isinstance == -1) {
+        return 1;
+    }
+    if (isinstance) {
+        int mode;
+        asdl_identifier_seq* names;
+
+        if (_PyObject_LookupAttr(obj, state->mode, &tmp) < 0) {
+            return 1;
+        }
+        if (tmp == NULL) {
+            PyErr_SetString(PyExc_TypeError, "required field \"mode\" missing from ScopeModifier");
+            return 1;
+        }
+        else {
+            int res;
+            if (_Py_EnterRecursiveCall(" while traversing 'ScopeModifier' node")) {
+                goto failed;
+            }
+            res = obj2ast_int(state, tmp, &mode, arena);
+            _Py_LeaveRecursiveCall();
+            if (res != 0) goto failed;
+            Py_CLEAR(tmp);
+        }
+        if (_PyObject_LookupAttr(obj, state->names, &tmp) < 0) {
+            return 1;
+        }
+        if (tmp == NULL) {
+            PyErr_SetString(PyExc_TypeError, "required field \"names\" missing from ScopeModifier");
+            return 1;
+        }
+        else {
+            int res;
+            Py_ssize_t len;
+            Py_ssize_t i;
+            if (!PyList_Check(tmp)) {
+                PyErr_Format(PyExc_TypeError, "ScopeModifier field \"names\" must be a list, not a %.200s", _PyType_Name(Py_TYPE(tmp)));
+                goto failed;
+            }
+            len = PyList_GET_SIZE(tmp);
+            names = _Py_asdl_identifier_seq_new(len, arena);
+            if (names == NULL) goto failed;
+            for (i = 0; i < len; i++) {
+                identifier val;
+                PyObject *tmp2 = Py_NewRef(PyList_GET_ITEM(tmp, i));
+                if (_Py_EnterRecursiveCall(" while traversing 'ScopeModifier' node")) {
+                    goto failed;
+                }
+                res = obj2ast_identifier(state, tmp2, &val, arena);
+                _Py_LeaveRecursiveCall();
+                Py_DECREF(tmp2);
+                if (res != 0) goto failed;
+                if (len != PyList_GET_SIZE(tmp)) {
+                    PyErr_SetString(PyExc_RuntimeError, "ScopeModifier field \"names\" changed size during iteration");
+                    goto failed;
+                }
+                asdl_seq_SET(names, i, val);
+            }
+            Py_CLEAR(tmp);
+        }
+        *out = _PyAST_ScopeModifier(mode, names, lineno, col_offset,
+                                    end_lineno, end_col_offset, arena);
         if (*out == NULL) goto failed;
         return 0;
     }
@@ -11915,6 +12062,10 @@ astmodule_exec(PyObject *m)
         return -1;
     }
     if (PyModule_AddObjectRef(m, "Expr", state->Expr_type) < 0) {
+        return -1;
+    }
+    if (PyModule_AddObjectRef(m, "ScopeModifier", state->ScopeModifier_type) <
+        0) {
         return -1;
     }
     if (PyModule_AddObjectRef(m, "Pass", state->Pass_type) < 0) {

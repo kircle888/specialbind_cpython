@@ -125,6 +125,7 @@ struct ast_state {
     PyObject *RShift_type;
     PyObject *Raise_type;
     PyObject *Return_type;
+    PyObject *ScopeModifier_type;
     PyObject *SetComp_type;
     PyObject *Set_type;
     PyObject *Slice_type;
@@ -213,6 +214,7 @@ struct ast_state {
     PyObject *lower;
     PyObject *match_case_type;
     PyObject *mod_type;
+    PyObject *mode;
     PyObject *module;
     PyObject *msg;
     PyObject *name;
@@ -230,6 +232,7 @@ struct ast_state {
     PyObject *rest;
     PyObject *returns;
     PyObject *right;
+    PyObject *scope_modifier;
     PyObject *simple;
     PyObject *slice;
     PyObject *step;

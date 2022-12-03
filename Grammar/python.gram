@@ -285,10 +285,10 @@ function_def_raw[stmt_ty]:
 # -------------------
 
 scope_modis[stmt_ty]:
-    | '[' ('+') a[asdl_expr_seq*]=','.NAME+ ']' {
-    _PyAST_ScopeModifier(1,CHECK(asdl_identifier_seq*, _PyPegen_map_names_to_ids(p, a)), EXTRA) }
-    | '[' ('-') a[asdl_expr_seq*]=','.NAME+ ']' {
-    _PyAST_ScopeModifier(0,CHECK(asdl_identifier_seq*, _PyPegen_map_names_to_ids(p, a)), EXTRA) }
+    | '[' ('+') oa=[a[asdl_expr_seq*]=','.NAME+{a}] ']' {
+    _PyAST_ScopeModifier(1,CHECK(asdl_identifier_seq*, _PyPegen_map_names_to_ids(p, oa)), EXTRA) }
+    | '[' ('-') oa=[a[asdl_expr_seq*]=','.NAME+{a}] ']' {
+    _PyAST_ScopeModifier(0,CHECK(asdl_identifier_seq*, _PyPegen_map_names_to_ids(p, oa)), EXTRA) }
 
 params[arguments_ty]:
     | invalid_parameters
@@ -828,8 +828,8 @@ group[expr_ty]:
 # ----------------
 
 lambdef[expr_ty]:
-    | 'lambda' a=[lambda_params] ':' b=expression {
-        _PyAST_Lambda((a) ? a : CHECK(arguments_ty, _PyPegen_empty_arguments(p)), b, EXTRA) }
+    | 'lambda' ag=[scope_modis] a=[lambda_params] ':' b=expression {
+        _PyAST_Lambda((a) ? a : CHECK(arguments_ty, _PyPegen_empty_arguments(p)), b, ag, EXTRA) }
 
 lambda_params[arguments_ty]:
     | invalid_lambda_parameters

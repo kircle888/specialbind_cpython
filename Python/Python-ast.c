@@ -556,6 +556,7 @@ static const char * const UnaryOp_fields[]={
 static const char * const Lambda_fields[]={
     "args",
     "body",
+    "scope_modifier",
 };
 static const char * const IfExp_fields[]={
     "test",
@@ -1337,7 +1338,7 @@ init_types(struct ast_state *state)
         "     | NamedExpr(expr target, expr value)\n"
         "     | BinOp(expr left, operator op, expr right)\n"
         "     | UnaryOp(unaryop op, expr operand)\n"
-        "     | Lambda(arguments args, expr body)\n"
+        "     | Lambda(arguments args, expr body, stmt? scope_modifier)\n"
         "     | IfExp(expr test, expr body, expr orelse)\n"
         "     | Dict(expr* keys, expr* values)\n"
         "     | Set(expr* elts)\n"
@@ -1384,9 +1385,12 @@ init_types(struct ast_state *state)
         "UnaryOp(unaryop op, expr operand)");
     if (!state->UnaryOp_type) return 0;
     state->Lambda_type = make_type(state, "Lambda", state->expr_type,
-                                   Lambda_fields, 2,
-        "Lambda(arguments args, expr body)");
+                                   Lambda_fields, 3,
+        "Lambda(arguments args, expr body, stmt? scope_modifier)");
     if (!state->Lambda_type) return 0;
+    if (PyObject_SetAttr(state->Lambda_type, state->scope_modifier, Py_None) ==
+        -1)
+        return 0;
     state->IfExp_type = make_type(state, "IfExp", state->expr_type,
                                   IfExp_fields, 3,
         "IfExp(expr test, expr body, expr orelse)");
@@ -2737,8 +2741,9 @@ _PyAST_UnaryOp(unaryop_ty op, expr_ty operand, int lineno, int col_offset, int
 }
 
 expr_ty
-_PyAST_Lambda(arguments_ty args, expr_ty body, int lineno, int col_offset, int
-              end_lineno, int end_col_offset, PyArena *arena)
+_PyAST_Lambda(arguments_ty args, expr_ty body, stmt_ty scope_modifier, int
+              lineno, int col_offset, int end_lineno, int end_col_offset,
+              PyArena *arena)
 {
     expr_ty p;
     if (!args) {
@@ -2757,6 +2762,7 @@ _PyAST_Lambda(arguments_ty args, expr_ty body, int lineno, int col_offset, int
     p->kind = Lambda_kind;
     p->v.Lambda.args = args;
     p->v.Lambda.body = body;
+    p->v.Lambda.scope_modifier = scope_modifier;
     p->lineno = lineno;
     p->col_offset = col_offset;
     p->end_lineno = end_lineno;
@@ -4405,6 +4411,11 @@ ast2obj_expr(struct ast_state *state, void* _o)
         value = ast2obj_expr(state, o->v.Lambda.body);
         if (!value) goto failed;
         if (PyObject_SetAttr(result, state->body, value) == -1)
+            goto failed;
+        Py_DECREF(value);
+        value = ast2obj_stmt(state, o->v.Lambda.scope_modifier);
+        if (!value) goto failed;
+        if (PyObject_SetAttr(result, state->scope_modifier, value) == -1)
             goto failed;
         Py_DECREF(value);
         break;
@@ -8542,6 +8553,7 @@ obj2ast_expr(struct ast_state *state, PyObject* obj, expr_ty* out, PyArena*
     if (isinstance) {
         arguments_ty args;
         expr_ty body;
+        stmt_ty scope_modifier;
 
         if (_PyObject_LookupAttr(obj, state->args, &tmp) < 0) {
             return 1;
@@ -8577,8 +8589,25 @@ obj2ast_expr(struct ast_state *state, PyObject* obj, expr_ty* out, PyArena*
             if (res != 0) goto failed;
             Py_CLEAR(tmp);
         }
-        *out = _PyAST_Lambda(args, body, lineno, col_offset, end_lineno,
-                             end_col_offset, arena);
+        if (_PyObject_LookupAttr(obj, state->scope_modifier, &tmp) < 0) {
+            return 1;
+        }
+        if (tmp == NULL || tmp == Py_None) {
+            Py_CLEAR(tmp);
+            scope_modifier = NULL;
+        }
+        else {
+            int res;
+            if (_Py_EnterRecursiveCall(" while traversing 'Lambda' node")) {
+                goto failed;
+            }
+            res = obj2ast_stmt(state, tmp, &scope_modifier, arena);
+            _Py_LeaveRecursiveCall();
+            if (res != 0) goto failed;
+            Py_CLEAR(tmp);
+        }
+        *out = _PyAST_Lambda(args, body, scope_modifier, lineno, col_offset,
+                             end_lineno, end_col_offset, arena);
         if (*out == NULL) goto failed;
         return 0;
     }

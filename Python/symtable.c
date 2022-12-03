@@ -1225,20 +1225,23 @@ symtable_visit_stmt(struct symtable *st, stmt_ty s)
                                   FunctionBlock, (void *)s,
                                   LOCATION(s)))
             VISIT_QUIT(st, 0);
-        PySTEntryObject* ste = st->st_cur;
-        if(s->v.FunctionDef.scope_modifier!=NULL){
-            ste->scope_modify_mode = s->v.FunctionDef.scope_modifier->v.ScopeModifier.mode;
-            asdl_identifier_seq *seq = s->v.FunctionDef.scope_modifier->v.ScopeModifier.names;
-            for (int j = 0; j < asdl_seq_LEN(seq); j++) {
-                identifier name = (identifier)asdl_seq_GET(seq, j);
-                PyList_Append(ste->allow_deny_names,name);
-            }
-        }
+        if (s->v.FunctionDef.scope_modifier)
+            VISIT(st,stmt,s->v.FunctionDef.scope_modifier);
         VISIT(st, arguments, s->v.FunctionDef.args);
         VISIT_SEQ(st, stmt, s->v.FunctionDef.body);
         if (!symtable_exit_block(st))
             VISIT_QUIT(st, 0);
         break;
+    case ScopeModifier_kind:{
+        PySTEntryObject* ste = st->st_cur;
+        ste->scope_modify_mode = s->v.ScopeModifier.mode;
+        asdl_identifier_seq *seq = s->v.ScopeModifier.names;
+        for (int j = 0; j < asdl_seq_LEN(seq); j++) {
+            identifier name = (identifier)asdl_seq_GET(seq, j);
+            PyList_Append(ste->allow_deny_names,name);
+        }
+        break;
+        }
     case ClassDef_kind: {
         PyObject *tmp;
         if (!symtable_add_def(st, s->v.ClassDef.name, DEF_LOCAL, LOCATION(s)))
@@ -1631,6 +1634,8 @@ symtable_visit_expr(struct symtable *st, expr_ty e)
                                   e->lineno, e->col_offset,
                                   e->end_lineno, e->end_col_offset))
             VISIT_QUIT(st, 0);
+        if (e->v.Lambda.scope_modifier)
+            VISIT(st, stmt, e->v.Lambda.scope_modifier);
         VISIT(st, arguments, e->v.Lambda.args);
         VISIT(st, expr, e->v.Lambda.body);
         if (!symtable_exit_block(st))
